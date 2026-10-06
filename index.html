@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XAU Signal Bot</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;
+ font-family:Arial,sans-serif;
+ background:#080b12;
+ color:#f4f6f8;
+}
+.container{
+ max-width:650px;
+ margin:auto;
+ padding:18px;
+}
+h1{
+ text-align:center;
+ margin:8px 0 4px;
+}
+.subtitle{
+ text-align:center;
+ color:#9aa4b2;
+ margin-bottom:20px;
+}
+.card{
+ background:#111722;
+ border:1px solid #263142;
+ border-radius:16px;
+ padding:16px;
+ margin-bottom:14px;
+}
+label{
+ display:block;
+ color:#aab4c2;
+ font-size:13px;
+ margin:12px 0 6px;
+}
+input,button{
+ width:100%;
+ padding:13px;
+ border-radius:10px;
+ border:1px solid #344155;
+ background:#0b1018;
+ color:white;
+ font-size:15px;
+}
+button{
+ background:#2563eb;
+ border:0;
+ font-weight:bold;
+ margin-top:14px;
+}
+.grid{
+ display:grid;
+ grid-template-columns:1fr 1fr;
+ gap:10px;
+}
+.box{
+ background:#0b1018;
+ border-radius:12px;
+ padding:13px;
+}
+.small{
+ color:#8d98a8;
+ font-size:12px;
+}
+.value{
+ font-size:20px;
+ font-weight:bold;
+ margin-top:5px;
+}
+.signal{
+ text-align:center;
+ font-size:32px;
+ font-weight:bold;
+ padding:20px;
+ border-radius:15px;
+ margin-bottom:12px;
+ background:#202938;
+}
+.buy{background:#064e3b;color:#6ee7b7}
+.sell{background:#7f1d1d;color:#fecaca}
+.wait{background:#374151;color:#e5e7eb}
+.warning{
+ color:#fbbf24;
+ font-size:12px;
+ line-height:1.5;
+}
+.good{color:#6ee7b7}
+.bad{color:#fca5a5}
+.footer{
+ text-align:center;
+ color:#697586;
+ font-size:11px;
+ padding:15px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>🥇 XAU Signal Bot</h1>
+<div class="subtitle">XAU/USD • M5 Trend + M1 Entry</div>
+
+<div class="card">
+<label>Twelve Data API Key</label>
+<input id="apiKey" type="password" placeholder="Paste your API key">
+
+<label>Account Balance ($)</label>
+<input id="balance" type="number" value="100">
+
+<div class="grid">
+<div>
+<label>Risk / Trade ($)</label>
+<input id="risk" type="number" value="5">
+</div>
+
+<div>
+<label>Daily Loss Limit ($)</label>
+<input id="dailyLoss" type="number" value="10">
+</div>
+</div>
+
+<div class="grid">
+<div>
+<label>Trades Today</label>
+<input id="trades" type="number" value="0">
+</div>
+
+<div>
+<label>Gold Contract Size</label>
+<input id="contract" type="number" value="100">
+</div>
+</div>
+
+<button onclick="getSignal()">🔍 CHECK XAU/USD SIGNAL</button>
+
+<div class="warning">
+Your API key is stored only in this browser. Never put your API key directly into this public GitHub file.
+</div>
+</div>
+
+<div id="signal" class="signal wait">WAIT</div>
+
+<div class="card">
+<div class="grid">
+
+<div class="box">
+<div class="small">XAU/USD Price</div>
+<div id="price" class="value">—</div>
+</div>
+
+<div class="box">
+<div class="small">M5 Trend</div>
+<div id="trend" class="value">—</div>
+</div>
+
+<div class="box">
+<div class="small">M5 RSI</div>
+<div id="m5rsi" class="value">—</div>
+</div>
+
+<div class="box">
+<div class="small">M1 RSI</div>
+<div id="m1rsi" class="value">—</div>
+</div>
+
+<div class="box">
+<div class="small">Entry</div>
+<div id="entry" class="value">—</div>
+</div>
+
+<div class="box">
+<div class="small">Stop Loss</div>
+<div id="sl" class="value">—</div>
+</div>
+
+<div class="box">
+<div class="small">Take Profit</div>
+<div id="tp" class="value">—</div>
+</div>
+
+<div class="box">
+<div class="small">Estimated Lot</div>
+<div id="lot" class="value">—</div>
+</div>
+
+</div>
+</div>
+
+<div class="card">
+<strong>Risk Protection</strong>
+<p id="protection" class="small">
+Waiting for signal...
+</p>
+</div>
+
+<div class="card">
+<strong>Strategy</strong>
+<p class="small">
+BUY: M5 EMA20 above EMA50 + bullish M5 RSI + M1 pullback to EMA20 + bullish candle.
+</p>
+<p class="small">
+SELL: M5 EMA20 below EMA50 + bearish M5 RSI + M1 pullback to EMA20 + bearish candle.
+</p>
+<p class="small">
+Risk/Reward target = 1 : 1.5
+</p>
+<p class="warning">
+This is a signal assistant, not an automatic trading system. It does not place trades in Exness.
+</p>
+</div>
+
+<div class="footer">
+XAU Signal Bot • Manual trading only
+</div>
+
+</div>
+
+<script>
+
+const $ = id => document.getElementById(id);
+
+const savedKey = localStorage.getItem("xau_api_key");
+if(savedKey) $("apiKey").value = savedKey;
+
+function ema(values, period){
+    if(values.length < period) return [];
+    let result = [];
+    let multiplier = 2/(period+1);
+    let previous = values.slice(0,period)
+        .reduce((a,b)=>a+b,0)/period;
+
+    result[period-1] = previous;
+
+    for(let i=period;i<values.length;i++){
+        previous =
+        (values[i]-previous)*multiplier+previous;
+        result[i] = previous;
+    }
+    return result;
+}
+
+function rsi(values, period=14){
+    if(values.length <= period) return null;
+
+    let gains=0;
+    let losses=0;
+
+    for(let i=1;i<=period;i++){
+        let change=values[i]-values[i-1];
+        if(change>=0) gains+=change;
+        else losses-=change;
+    }
+
+    let avgGain=gains/period;
+    let avgLoss=losses/period;
+
+    for(let i=period+1;i<values.length;i++){
+        let change=values[i]-values[i-1];
+
+        let gain=change>0?change:0;
+        let loss=change<0?-change:0;
+
+        avgGain=((avgGain*(period-1))+gain)/period;
+        avgLoss=((avgLoss*(period-1))+loss)/period;
+    }
+
+    if(avgLoss===0) return 100;
+
+    let rs=avgGain/avgLoss;
+    return 100-(100/(1+rs));
+}
+
+async function candles(interval){
+
+    const key=$("apiKey").value.trim();
+
+    if(!key){
+        throw new Error("Enter your Twelve Data API key first.");
+    }
+
+    localStorage.setItem("xau_api_key",key);
+
+    const url=
+    "https://api.twelvedata.com/time_series"+
+    "?symbol=XAU/USD"+
+    "&interval="+interval+
+    "&outputsize=100"+
+    "&apikey="+encodeURIComponent(key);
+
+    const response=await fetch(url);
+    const data=await response.json();
+
+    if(data.status==="error"){
+        throw new Error(data.message || "API error");
+    }
+
+    if(!data.values || data.values.length<60){
+        throw new Error("Not enough XAU/USD candle data returned.");
+    }
+
+    return data.values.reverse().map(x=>({
+        open:Number(x.open),
+        high:Number(x.high),
+        low:Number(x.low),
+        close:Number(x.close)
+    }));
+}
+
+function number(x){
+    return Number(x).toFixed(2);
+}
+
+async function getSignal(){
+
+    $("signal").className="signal wait";
+    $("signal").textContent="⏳ ANALYZING...";
+    
+    try{
+
+        const m1=await candles("1min");
+        const m5=await candles("5min");
+
+        const m5close=m5.map(x=>x.close);
+        const m1close=m1.map(x=>x.close);
+
+        const m5ema20=ema(m5close,20);
+        const m5ema50=ema(m5close,50);
+        const m1ema20=ema(m1close,20);
+
+        const m5RSI=rsi(m5close,14);
+        const m1RSI=rsi(m1close,14);
+
+        const M5=m5[m5.length-1];
+        const M1=m1[m1.length-1];
+
+        const e20m5=m5ema20[m5ema20.length-1];
+        const e50m5=m5ema50[m5ema50.length-1];
+        const e20m1=m1ema20[m1ema20.length-1];
+
+        const previousE20=
+        m1ema20[m1ema20.length-2];
+
+        const bullishTrend=
+            e20m5>e50m5 &&
+            M5.close>e20m5 &&
+            m5RSI>50;
+
+        const bearishTrend=
+            e20m5<e50m5 &&
+            M5.close<e20m5 &&
+            m5RSI<50;
+
+        const bullishEntry=
+            bullishTrend &&
+            M1.close>M1.open &&
+            M1.close>e20m1 &&
+            M1.low<=previousE20 &&
+            m1RSI>=50 &&
+            m1RSI<=70;
+
+        const bearishEntry=
+            bearishTrend &&
+            M1.close<M1.open &&
+            M1.close<e20m1 &&
+            M1.high>=previousE20 &&
+            m1RSI>=30 &&
+            m1RSI<=50;
+
+        let signal="WAIT";
+
+        if(bullishEntry) signal="BUY";
+        if(bearishEntry) signal="SELL";
+
+        $("price").textContent=number(M1.close);
+
+        $("trend").textContent=
+            bullishTrend ? "BULLISH" :
+            bearishTrend ? "BEARISH" : "NEUTRAL";
+
+        $("trend").className=
+            "value "+(
+            bullishTrend ? "good" :
+            bearishTrend ? "bad" : ""
+            );
+
+        $("m5rsi").textContent=number(m5RSI);
+        $("m1rsi").textContent=number(m1RSI);
+
+        const recent=m1.slice(-6,-1);
+
+        let entry=M1.close;
+        let sl;
+        let tp;
+
+        if(signal==="BUY"){
+
+            sl=Math.min(...recent.map(x=>x.low))-0.30;
+            const riskDistance=entry-sl;
+            tp=entry+(riskDistance*1.5);
+
+        }else if(signal==="SELL"){
+
+            sl=Math.max(...recent.map(x=>x.high))+0.30;
+            const riskDistance=sl-entry;
+            tp=entry-(riskDistance*1.5);
+
+        }else{
+
+            sl=0;
+            tp=0;
+        }
+
+        $("entry").textContent=
+            signal==="WAIT" ? "—" : number(entry);
+
+        $("sl").textContent=
+            signal==="WAIT" ? "—" : number(sl);
+
+        $("tp").textContent=
+            signal==="WAIT" ? "—" : number(tp);
+
+        let lot="—";
+
+        if(signal!=="WAIT"){
+
+            const risk=Number($("risk").value);
+            const contract=Number($("contract").value);
+
+            const distance=Math.abs(entry-sl);
+
+            if(distance>0 && contract>0){
+
+                let calculated=
+                    risk/(distance*contract);
+
+                calculated=
+                    Math.floor(calculated*100)/100;
+
+                lot=calculated.toFixed(2);
+            }
+        }
+
+        $("lot").textContent=lot;
+
+        const dailyLimit=Number($("dailyLoss").value);
+        const trades=Number($("trades").value);
+
+        if(trades>=10){
+
+            signal="WAIT";
+            $("protection").innerHTML=
+            "<span class='bad'>Maximum 10 trades reached today.</span>";
+
+        }else{
+
+            $("protection").innerHTML=
+            "<span class='good'>Daily protection active.</span><br>"+
+            "Maximum planned loss: $"+
+            Number($("risk").value).toFixed(2)+
+            " per trade.<br>"+
+            "Daily limit: $"+
+            dailyLimit.toFixed(2)+
+            ".<br>"+
+            "Trades today: "+trades+"/10";
+        }
+
+        $("signal").className=
+            "signal "+
+            (signal==="BUY"?"buy":
+             signal==="SELL"?"sell":"wait");
+
+        $("signal").textContent=
+            signal==="BUY" ? "🟢 BUY" :
+            signal==="SELL" ? "🔴 SELL" :
+            "⚪ WAIT";
+
+    }catch(error){
+
+        $("signal").className="signal wait";
+        $("signal").textContent="⚠️ ERROR";
+
+        $("protection").innerHTML=
+        "<span class='bad'>"+
+        error.message+
+        "</span>";
+    }
+}
+
+</script>
+
+</body>
+</html>
